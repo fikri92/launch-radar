@@ -32,12 +32,16 @@ function setup() {
   el('meta-watch').textContent = num(DATA.watchlist_size);
   el('meta-total-value').textContent = money(DATA.implied_total_usd);
 
-  const m = DATA.model;
-  el('m-base').textContent = m.base_multiple;
-  el('m-clamp').textContent = `${m.growth_floor}%…${m.growth_cap}%`;
-  el('m-agecap').textContent = m.age_cap_days;
-  el('m-late').textContent = m.late_after_days;
-  el('m-latepen').textContent = `${Math.round(m.late_penalty * 100)}%`;
+  const f = DATA.fit;
+  el('m-fitn').textContent = f.ok ? num(f.n_fit) : '—';
+  el('m-testn').textContent = f.ok ? num(f.n_test) : '—';
+  el('m-oos').textContent = f.ok ? `±${f.oos_mae_pct}% (median absolute)` : 'no fit';
+  el('bands').innerHTML = (f.bands ?? [])
+    .map((b) => {
+      const hi = b.hi === null || b.hi > 1e17 ? 'and up' : money(b.hi);
+      return `<tr><td>${money(b.lo)} – ${hi}</td><td class="num">${b.n}</td><td class="num">${b.median.toFixed(3)}×</td><td class="num">${money(1e6 * b.median)}</td></tr>`;
+    })
+    .join('');
 
   fillSelect(el('category'), [...new Set(rows.map((r) => r.category).filter(Boolean))].sort(), 'All categories');
   fillSelect(el('chain'), [...new Set(rows.flatMap((r) => r.chains))].sort(), 'All chains');
@@ -129,14 +133,15 @@ function openDetail(slug) {
   if (!r) return;
   el('detail-title').textContent = `${r.name} · rank ${r.rank}`;
   el('detail-meta').textContent = `${r.category ?? 'no category'} · ${r.chains.join(', ') || 'chain unknown'} · record began ${r.listed_at ?? 'unknown'} (${days(r.age_days)})${r.watchlist ? ' · on the watchlist' : ' · below the floor'}`;
+  const comps = [...DATA.market]
+    .sort((a, b) => Math.abs(Math.log(a.tvl_usd / r.tvl_usd)) - Math.abs(Math.log(b.tvl_usd / r.tvl_usd)))
+    .slice(0, 4);
   el('detail-model').innerHTML = [
     ['TVL', money(r.tvl_usd)],
-    [`Base (× ${DATA.model.base_multiple})`, money(r.base_usd)],
-    [`Growth ${pct(r.change_7d)} → ×`, r.growth_multiplier.toFixed(3)],
-    ['Age → ×', r.age_multiplier.toFixed(3)],
-    ['Late-record → ×', r.late_multiplier.toFixed(3)],
-    ['Chains → ×', r.chain_multiplier.toFixed(3)],
+    ['Band multiple (fitted)', `${r.multiple.toFixed(3)}×`],
+    ['Chain factor', `${r.chain_multiplier.toFixed(3)}×`],
     ['Implied value', money(r.implied_value_usd)],
+    ...comps.map((c) => [`comp · ${c.name}`, `${c.multiple.toFixed(2)}× on ${money(c.tvl_usd)} TVL`]),
   ]
     .map(([k, v]) => `<li><span>${esc(k)}</span><span>${esc(v)}</span></li>`)
     .join('');

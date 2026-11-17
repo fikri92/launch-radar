@@ -27,13 +27,20 @@
 </header>
 
 <section class="model" aria-labelledby="model-title">
-  <h2 id="model-title">How a row is priced</h2>
+  <h2 id="model-title">How a row is priced — fitted from the market, then tested</h2>
   <p class="model-lead">
-    Implied value = TVL × <b id="m-base">0.22</b> × growth multiplier × age multiplier × late multiplier × chain multiplier.
-    Growth is the seven-day change clipped to <span id="m-clamp">−50%…150%</span>; age is days since the record began,
-    capped at <span id="m-agecap">1095</span> days; a record older than <span id="m-late">1460</span> days loses up to
-    <span id="m-latepen">25%</span> because a long run with no token is weaker news. No protocol is special-cased.
+    For every protocol whose token already trades, the multiple the market pays is <b>market cap ÷ TVL</b>.
+    That distribution is wide, so the model uses the <b>median multiple of the protocol's TVL band</b>, not a
+    regression line: <b>implied value = TVL × band median × chain factor</b>. The bands are refitted on
+    <span id="m-fitn">—</span> protocols and scored on <span id="m-testn">—</span> held out from the fit;
+    out-of-sample median error is <b id="m-oos">—</b>. No protocol name is special-cased.
   </p>
+  <table class="bands" aria-label="Fitted multiple by TVL band">
+    <thead>
+      <tr><th scope="col">TVL band</th><th scope="col" class="num">Trading protocols</th><th scope="col" class="num">Median multiple</th><th scope="col" class="num">Implied per $1M TVL</th></tr>
+    </thead>
+    <tbody id="bands"></tbody>
+  </table>
 </section>
 
 <nav class="controls" aria-label="Filters">

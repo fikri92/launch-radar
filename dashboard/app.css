@@ -81,6 +81,11 @@ b { font-weight: 650; }
 }
 .model h2 { color: var(--accent-2); margin-bottom: 6px; }
 .model-lead { color: #14453b; font-size: 14px; max-width: 110ch; }
+.model .bands { width: 100%; margin-top: 10px; border-collapse: collapse; font-size: 13px; }
+.model .bands th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: #2c6a5c; padding: 6px 10px 4px 0; border-bottom: 1px solid #bfe0d6; }
+.model .bands td { padding: 6px 10px 6px 0; border-bottom: 1px solid #d5ece5; color: #14453b; }
+.model .bands tr:last-child td { border-bottom: 0; }
+.model .bands .num { text-align: right; font-family: var(--mono); }
 
 /* ---------- controls ---------- */
 .controls {

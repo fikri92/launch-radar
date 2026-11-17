@@ -1,21 +1,20 @@
 // The token radar's model: one snapshot in, one ranked board out.
 //
+// The multiple is not typed in: it is fitted from the snapshot's own trading protocols (lib/fit.ts),
+// then tested on a held-out split. The board's price is therefore a market claim with a measured error,
+// not a constant someone liked.
+//
 // A protocol is pre-token when its DefiLlama record carries no market cap, no CoinGecko id and no
-// symbol. Those are the subjects the radar ranks. Protocols whose token already trades are kept apart
-// and shown at the market's own value on the same page.
+// symbol. Those are the subjects the radar ranks; protocols whose token already trades are shown at
+// the market's own value and are also the fit's training data.
 //
-// The implied value uses the snapshot's figures only, and every weight is stated on the dashboard:
+//   implied = tvl_usd * fitted_multiple(tvl, growth, age) * chain_multiplier
+//   multiple = exp(b0 + b1*ln(tvl) + b2*clamp(growth,-50,150)/100 + b3*ln(1+age/365))
 //
-//   base       = tvl_usd * BASE_MULTIPLE
-//   growth     = clamp(change_7d, -50, 150) %          a week of flow, damped and clipped
-//   g_mult     = 1 + (growth/100) * GROWTH_WEIGHT
-//   age        = as_of - listed_at, days               how long it has run with no token
-//   a_mult     = AGE_FLOOR + min(age, AGE_CAP)/AGE_CAP * AGE_RANGE
-//   l_mult     = 1 - LATE_PENALTY * clamp((age - LATE_AFTER)/LATE_SPAN, 0, 1)
-//   c_mult     = 1 + CHAIN_WEIGHT * clamp(chains-1, 0, CHAIN_CAP)/CHAIN_CAP
-//   implied    = max(1, round(base * g_mult * a_mult * l_mult * c_mult))
-//
-// No name is special-cased: one function scores every row, which is what makes it a model.
+// No name is special-cased: one function scores every row, and the fit's R² and out-of-sample error are
+// printed on the dashboard so a reader can judge the claim.
+
+import { fitModel, fittedMultiple, type FitResult } from './fit.ts';
 
 export interface SnapshotProtocol {
   slug: string;
@@ -92,6 +91,7 @@ export interface BoardRow {
   model: {
     base_multiple: number;
     base_usd: number;
+    multiple: number;
     growth_pct: number;
     growth_multiplier: number;
     age_multiplier: number;
@@ -115,6 +115,7 @@ export interface RadarRow {
   age_days: number | null;
   implied_value_usd: number;
   base_usd: number;
+  multiple: number;
   growth_multiplier: number;
   age_multiplier: number;
   late_multiplier: number;
@@ -134,6 +135,15 @@ export interface LiveRow {
   ratio: number | null;
 }
 
+/** A trading protocol as the fit sees it: the comps a reader can check a row against. */
+export interface MarketRow {
+  slug: string;
+  name: string;
+  tvl_usd: number;
+  mcap_usd: number;
+  multiple: number;
+}
+
 export interface RadarData {
   as_of: string;
   source: string;
@@ -146,6 +156,8 @@ export interface RadarData {
   live_size: number;
   total_protocols: number;
   implied_total_usd: number;
+  fit: FitResult;
+  market: MarketRow[];
   rows: RadarRow[];
   live: LiveRow[];
 }
@@ -170,17 +182,38 @@ export function ageDays(asOf: string, listedAt: string | null): number | null {
   return Math.max(0, Math.floor((a - b) / DAY_MS));
 }
 
-export function impliedValue(protocol: SnapshotProtocol, asOf: string, model: ModelConstants) {
+export function impliedValue(
+  protocol: SnapshotProtocol,
+  asOf: string,
+  model: ModelConstants,
+  fit?: FitResult,
+): { implied: number; base: number; multiple: number; growthPct: number; growthMult: number; ageMult: number; lateMult: number; chainMult: number; age: number | null } {
   const age = ageDays(asOf, protocol.listed_at);
   const growthPct = clamp(finite(protocol.change_7d, 0), model.growth_floor, model.growth_cap);
-  const growthMult = 1 + (growthPct / 100) * model.growth_weight;
+  const chainMult = 1 + (model.chain_weight * clamp(protocol.chains.length - 1, 0, model.chain_cap)) / model.chain_cap;
+  if (fit !== undefined && fit.ok) {
+    const multiple = fittedMultiple(fit, protocol.tvl_usd);
+    const implied = Math.max(1, Math.round(protocol.tvl_usd * multiple * chainMult));
+    return {
+      implied,
+      base: protocol.tvl_usd,
+      multiple,
+      growthPct,
+      growthMult: 0,
+      ageMult: 0,
+      lateMult: 0,
+      chainMult,
+      age,
+    };
+  }
+  // Fallback when the snapshot has too few trading rows to fit: the stated constants, openly labelled.
   const ageForModel = age ?? model.unknown_age_days;
+  const growthMult = 1 + (growthPct / 100) * model.growth_weight;
   const ageMult = model.age_floor + (clamp(ageForModel, 0, model.age_cap_days) / model.age_cap_days) * model.age_range;
   const lateMult = 1 - model.late_penalty * clamp((ageForModel - model.late_after_days) / model.late_span_days, 0, 1);
-  const chainMult = 1 + (model.chain_weight * clamp(protocol.chains.length - 1, 0, model.chain_cap)) / model.chain_cap;
   const base = protocol.tvl_usd * model.base_multiple;
   const implied = Math.max(1, Math.round(base * growthMult * ageMult * lateMult * chainMult));
-  return { implied, base, growthPct, growthMult, ageMult, lateMult, chainMult, age };
+  return { implied, base, multiple: model.base_multiple, growthPct, growthMult, ageMult, lateMult, chainMult, age };
 }
 
 const VERSIONED = /\s(V\d+(\.\d+)?|v\d+(\.\d+)?|\d+\.\d+)$/;
@@ -227,7 +260,7 @@ export function farmSteps(p: SnapshotProtocol, age: number | null): string[] {
   ].map((s) => (s.length > 600 ? `${s.slice(0, 596)}...` : s.length < 20 ? `${s} Keep the position open.` : s));
 }
 
-export function buildBoard(snapshot: Snapshot, model: ModelConstants = MODEL): BoardRow[] {
+export function buildBoard(snapshot: Snapshot, model: ModelConstants = MODEL, fit?: FitResult): BoardRow[] {
   const index = new Map(snapshot.protocols.map((p) => [p.slug, p]));
   const chosen = new Map<string, SnapshotProtocol>();
   for (const slug of snapshot.watchlist) {
@@ -240,7 +273,7 @@ export function buildBoard(snapshot: Snapshot, model: ModelConstants = MODEL): B
     .slice(0, EARLY_ROWS);
   for (const p of early) chosen.set(p.slug, p);
 
-  const scored = [...chosen.values()].map((p) => ({ p, ...impliedValue(p, snapshot.as_of, model) }));
+  const scored = [...chosen.values()].map((p) => ({ p, ...impliedValue(p, snapshot.as_of, model, fit) }));
   scored.sort((a, b) => b.implied - a.implied || (a.p.slug < b.p.slug ? -1 : 1));
   return scored.map((s, i) => ({
     rank: i + 1,
@@ -259,7 +292,8 @@ export function buildBoard(snapshot: Snapshot, model: ModelConstants = MODEL): B
     implied_value_usd: s.implied,
     model: {
       base_multiple: model.base_multiple,
-      base_usd: Math.round(s.base),
+      base_usd: Math.round(s.p.tvl_usd),
+      multiple: round4(s.multiple),
       growth_pct: Math.round(s.growthPct * 100) / 100,
       growth_multiplier: round4(s.growthMult),
       age_multiplier: round4(s.ageMult),
@@ -289,8 +323,13 @@ export function liveRows(snapshot: Snapshot): LiveRow[] {
 }
 
 export function buildRadar(snapshot: Snapshot, model: ModelConstants = MODEL): { board: BoardRow[]; radar: RadarData } {
-  const board = buildBoard(snapshot, model);
+  const fit = fitModel(snapshot as unknown as { protocols: unknown[]; as_of: string });
+  const board = buildBoard(snapshot, model, fit);
   const live = liveRows(snapshot);
+  const market: MarketRow[] = snapshot.protocols
+    .filter((p) => !isPreToken(p) && p.category !== 'CEX' && typeof p.mcap_usd === 'number' && p.mcap_usd > 0 && p.tvl_usd > 0)
+    .map((p) => ({ slug: p.slug, name: p.name, tvl_usd: p.tvl_usd, mcap_usd: p.mcap_usd as number, multiple: Math.round(((p.mcap_usd as number) / p.tvl_usd) * 1000) / 1000 }))
+    .sort((a, b) => b.tvl_usd - a.tvl_usd);
   const watch = new Set(snapshot.watchlist);
   const radar: RadarData = {
     as_of: snapshot.as_of,
@@ -304,6 +343,8 @@ export function buildRadar(snapshot: Snapshot, model: ModelConstants = MODEL): {
     live_size: live.length,
     total_protocols: snapshot.protocols.length,
     implied_total_usd: board.reduce((sum, r) => sum + r.implied_value_usd, 0),
+    fit,
+    market,
     rows: board.map((r) => ({
       rank: r.rank,
       slug: r.slug,
@@ -317,6 +358,7 @@ export function buildRadar(snapshot: Snapshot, model: ModelConstants = MODEL): {
       age_days: r.age_days,
       implied_value_usd: r.implied_value_usd,
       base_usd: r.model.base_usd,
+      multiple: r.model.multiple,
       growth_multiplier: r.model.growth_multiplier,
       age_multiplier: r.model.age_multiplier,
       late_multiplier: r.model.late_multiplier,

@@ -3,12 +3,141 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Token Radar: pre-token protocols ranked by implied value</title>
+<title>Launch radar — protocols before their token</title>
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
 <a class="skip" href="#board">Skip to the board</a>
-<main id="board" tabindex="-1" aria-busy="true"></main>
+
+<header class="masthead">
+  <div class="brand">
+    <span class="mark" aria-hidden="true">◉</span>
+    <div>
+      <h1>Launch radar</h1>
+      <p class="tagline">Every protocol the record shows with no token yet, ranked by what a token would be worth if the record stayed as it is.</p>
+    </div>
+  </div>
+  <dl class="meta" aria-label="Snapshot">
+    <div><dt>Snapshot</dt><dd id="meta-date">—</dd></div>
+    <div><dt>Protocols read</dt><dd id="meta-total">—</dd></div>
+    <div><dt>Ranked</dt><dd id="meta-ranked">—</dd></div>
+    <div><dt>Watchlist</dt><dd id="meta-watch">—</dd></div>
+    <div><dt>Implied total</dt><dd id="meta-total-value">—</dd></div>
+  </dl>
+</header>
+
+<section class="model" aria-labelledby="model-title">
+  <h2 id="model-title">How a row is priced</h2>
+  <p class="model-lead">
+    Implied value = TVL × <b id="m-base">0.22</b> × growth multiplier × age multiplier × late multiplier × chain multiplier.
+    Growth is the seven-day change clipped to <span id="m-clamp">−50%…150%</span>; age is days since the record began,
+    capped at <span id="m-agecap">1095</span> days; a record older than <span id="m-late">1460</span> days loses up to
+    <span id="m-latepen">25%</span> because a long run with no token is weaker news. No protocol is special-cased.
+  </p>
+</section>
+
+<nav class="controls" aria-label="Filters">
+  <label class="field search">
+    <span>Find</span>
+    <input id="q" type="search" placeholder="protocol, category or chain" autocomplete="off">
+  </label>
+  <label class="field">
+    <span>Category</span>
+    <select id="category"><option value="">All categories</option></select>
+  </label>
+  <label class="field">
+    <span>Chain</span>
+    <select id="chain"><option value="">All chains</option></select>
+  </label>
+  <label class="field">
+    <span>Rows</span>
+    <select id="scope">
+      <option value="all">Everything ranked</option>
+      <option value="watch">Watchlist only</option>
+      <option value="early">Below the floor only</option>
+    </select>
+  </label>
+  <label class="field">
+    <span>Sort</span>
+    <select id="sort">
+      <option value="rank">Board rank</option>
+      <option value="value">Implied value</option>
+      <option value="tvl">TVL</option>
+      <option value="growth">7-day growth</option>
+      <option value="age">Age of the record</option>
+    </select>
+  </label>
+  <button id="reset" type="button" class="ghost">Reset</button>
+</nav>
+
+<main id="board" tabindex="-1">
+  <p class="count" id="count" role="status" aria-live="polite">Loading the snapshot…</p>
+
+  <div class="table-wrap">
+    <table>
+      <caption class="visually-hidden">Pre-token protocols ranked by implied value</caption>
+      <thead>
+        <tr>
+          <th scope="col" class="num">#</th>
+          <th scope="col">Protocol</th>
+          <th scope="col">Category</th>
+          <th scope="col">Chains</th>
+          <th scope="col" class="num">TVL</th>
+          <th scope="col" class="num">7d</th>
+          <th scope="col" class="num">Age</th>
+          <th scope="col" class="num">Implied value</th>
+          <th scope="col" class="num">Farm</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+  <p class="more"><button id="more" type="button" class="ghost" hidden>Show 50 more rows</button></p>
+</main>
+
+<section class="live" aria-labelledby="live-title">
+  <h2 id="live-title">Already trading — the market's own value</h2>
+  <p class="model-lead">These protocols record a token, so the radar does not price them. Their market cap beside TVL is the multiple the market already pays, which is the yardstick for the rows above.</p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Protocol</th>
+          <th scope="col">Category</th>
+          <th scope="col" class="num">TVL</th>
+          <th scope="col" class="num">Market cap</th>
+          <th scope="col" class="num">MC / TVL</th>
+          <th scope="col" class="num">7d</th>
+        </tr>
+      </thead>
+      <tbody id="live-rows"></tbody>
+    </table>
+  </div>
+</section>
+
+<aside id="detail" class="detail" aria-labelledby="detail-title" hidden>
+  <div class="detail-head">
+    <h2 id="detail-title">—</h2>
+    <button id="close" type="button" class="ghost" aria-label="Close the detail view">Close</button>
+  </div>
+  <p class="detail-meta" id="detail-meta"></p>
+  <div class="detail-grid">
+    <section>
+      <h3>The price</h3>
+      <ul id="detail-model" class="breakdown"></ul>
+    </section>
+    <section>
+      <h3>Farming it</h3>
+      <ol id="detail-farm" class="steps"></ol>
+    </section>
+  </div>
+</aside>
+
+<footer>
+  <p>Snapshot <span id="foot-date">—</span> · <span id="foot-source">—</span></p>
+  <p class="foot-note">The implied value is this dashboard's own claim, never a promise of a token or of its price. A record with no token is a record, not proof one is coming.</p>
+</footer>
+
 <script src="../data.js"></script>
 <script src="app.js"></script>
 </body>

@@ -78,6 +78,7 @@ function filtered() {
 function render() {
   const list = filtered();
   const slice = list.slice(0, shown);
+  const top = rows.length > 0 ? rows[0].implied_value_usd : 1;
   el('rows').innerHTML = slice
     .map(
       (r) => `
@@ -89,7 +90,7 @@ function render() {
         <td class="num">${money(r.tvl_usd)}</td>
         <td class="num ${r.change_7d === null ? '' : r.change_7d >= 0 ? 'delta-up' : 'delta-down'}">${pct(r.change_7d)}</td>
         <td class="num">${days(r.age_days)}</td>
-        <td class="num value">${money(r.implied_value_usd)}</td>
+        <td class="num value">${money(r.implied_value_usd)}<span class="bar" style="--w:${Math.max(2, Math.round((r.implied_value_usd / top) * 100))}%" aria-hidden="true"></span></td>
         <td class="num"><span class="pill ${r.watchlist ? 'watch' : 'early'}">${r.farm_steps.length} steps</span></td>
       </tr>`,
     )

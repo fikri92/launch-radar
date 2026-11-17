@@ -71,7 +71,7 @@ export const MODEL: ModelConstants = {
 };
 
 export const MODEL_VERSION = 'radar-2';
-export const EARLY_ROWS = 260;
+export const EARLY_ROWS = 320;
 export const LIVE_ROWS = 30;
 
 export interface BoardRow {
